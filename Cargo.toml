@@ -1,5 +1,10 @@
 [package]
 name = "lua-bundle"
+readme = "README.md"
+description = "a lua file concatter"
+repository = "https://github.com/lua-tools/lua-bundle"
+
+license = "GPL-3.0-only"
 version = "0.1.0"
 edition = "2021"
 
