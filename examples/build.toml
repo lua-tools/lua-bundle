@@ -1,0 +1,9 @@
+[[project]]
+name = "example"
+files = ["src", "vendor"]
+entry_point = "src/main.lua"
+
+[[project]]
+name = "second"
+files = ["src/second.lua"]
+entry_point = "src/second.lua"
