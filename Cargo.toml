@@ -1,0 +1,11 @@
+[package]
+name = "lua-bundle"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "lua-bundle"
+path = "src/bin/bundle/main.rs"
+
+[dependencies]
+toml = "0.8.20"
