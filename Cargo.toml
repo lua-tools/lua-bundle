@@ -5,12 +5,12 @@ description = "a lua file concatter"
 repository = "https://github.com/lua-tools/lua-bundle"
 
 license = "GPL-3.0-only"
-version = "0.1.0"
-edition = "2021"
+version = "0.1.1"
+edition = "2024"
 
 [[bin]]
 name = "lua-bundle"
 path = "src/bin/bundle/main.rs"
 
 [dependencies]
-toml = "0.8.20"
+toml = "0.9.7"
