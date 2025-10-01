@@ -1,5 +1,5 @@
 use std::{
-    io::{Read, Write},
+    io::Write,
     path::{Path, PathBuf},
     process::{Command, Stdio},
 };
@@ -32,52 +32,38 @@ struct BuildFile {
 }
 
 fn main() {
-    let Some(build) = parse_build_file() else {
+    let Some(build) = BuildFile::from_workspace() else {
         return;
     };
 
-    let require_method = build.require_function;
-
     for project in build.projects {
+        project.build(&build.require_function);
+    }
+}
+
+impl Project {
+    fn build(&self, require_method: &str) {
         let mut output = include_str!("lua.lua").to_string();
 
         output.push_str("\nlocal files = {");
-        for file in project.files {
-            let binding = path_without_extension(&file);
+        for file in &self.files {
+            let binding = path_without_extension(file);
             let name = binding.to_str().unwrap();
 
-            let mut content = std::fs::read_to_string(&file).unwrap();
+            let mut content = std::fs::read_to_string(file).unwrap();
             let extension = file.extension().unwrap().to_str().unwrap();
 
             if extension == "fnl" {
-                let mut fennel_binary = Command::new("fennel")
-                    .stdin(Stdio::piped())
-                    .stdout(Stdio::piped())
-                    .arg("--compile")
-                    .arg("-")
-                    .spawn()
-                    .expect("error: failed to launch fennel");
-                write!(fennel_binary.stdin.as_mut().unwrap(), "{}", content).unwrap();
-
-                content =
-                    String::from_utf8_lossy(&fennel_binary.wait_with_output().unwrap().stdout)
-                        .to_string();
-                //.stdout
-                //.as_mut()
-                //.unwrap()
-                //.read_to_string(&mut content)
-                //.unwrap();
-
-                //fennel_binary.kill().unwrap();
+                content = compile_fennel_to_lua(&content);
             }
 
-            output.push_str(insert_module(name, &content, &require_method, 1).as_str());
+            output.push_str(insert_module(name, &content, require_method, 1).as_str());
         }
         output.push_str("\n}\n");
 
         output.push_str(
             insert_entry_point(
-                path_without_extension(&project.entry_point)
+                path_without_extension(&self.entry_point)
                     .to_str()
                     .unwrap()
                     .into(),
@@ -85,46 +71,61 @@ fn main() {
             .as_str(),
         );
 
-        std::fs::create_dir_all(&project.output).unwrap();
-        std::fs::write(project.output.join(&project.name), output).unwrap();
+        std::fs::create_dir_all(&self.output).unwrap();
+        std::fs::write(self.output.join(&self.name), output).unwrap();
     }
 }
 
-fn parse_build_file() -> Option<BuildFile> {
-    if !std::fs::exists(BUILD_FILE).unwrap() {
-        eprintln!("error: could not find `build.toml` file");
-        return None;
-    }
-
-    let build = std::fs::read_to_string(BUILD_FILE).unwrap();
-    let table = build.as_str().parse::<Table>().unwrap();
-
-    let projects = match table.get("project") {
-        Some(value) => {
-            let mut projects = Vec::new();
-            let array = value.as_array().unwrap();
-
-            for value in array {
-                let table = value.as_table().unwrap();
-                let Some(project) = parse_project(table) else {
-                    continue;
-                };
-
-                projects.push(project);
-            }
-
-            projects
-        }
-        None => {
-            eprintln!("error: missing [[project]] field in build.toml");
+impl BuildFile {
+    fn from_workspace() -> Option<BuildFile> {
+        if !std::fs::exists(BUILD_FILE).unwrap() {
+            eprintln!("error: could not find `build.toml` file");
             return None;
         }
-    };
 
-    Some(BuildFile {
-        projects,
-        require_function: DEFAULT_REQUIRE_FUNCTION.into(),
-    })
+        let build = std::fs::read_to_string(BUILD_FILE).unwrap();
+        let table = build.as_str().parse::<Table>().unwrap();
+
+        let projects = match table.get("project") {
+            Some(value) => {
+                let mut projects = Vec::new();
+                let array = value.as_array().unwrap();
+
+                for value in array {
+                    let table = value.as_table().unwrap();
+                    let Some(project) = parse_project(table) else {
+                        continue;
+                    };
+
+                    projects.push(project);
+                }
+
+                projects
+            }
+            None => {
+                eprintln!("error: missing [[project]] field in build.toml");
+                return None;
+            }
+        };
+
+        Some(BuildFile {
+            projects,
+            require_function: DEFAULT_REQUIRE_FUNCTION.into(),
+        })
+    }
+}
+
+fn compile_fennel_to_lua(source: &str) -> String {
+    let mut fennel = Command::new("fennel")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .arg("--compile")
+        .arg("-")
+        .spawn()
+        .expect("error: failed to launch fennel");
+
+    write!(fennel.stdin.as_mut().unwrap(), "{}", source).unwrap();
+    String::from_utf8_lossy(&fennel.wait_with_output().unwrap().stdout).to_string()
 }
 
 fn parse_project(table: &Table) -> Option<Project> {
