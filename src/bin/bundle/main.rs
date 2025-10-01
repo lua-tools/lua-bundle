@@ -1,11 +1,15 @@
-use std::path::{Path, PathBuf};
+use std::{
+    io::{Read, Write},
+    path::{Path, PathBuf},
+    process::{Command, Stdio},
+};
 
 use toml::Table;
 
 const BUILD_FILE: &str = "build.toml";
 const DEFAULT_REQUIRE_FUNCTION: &str = "require";
 
-#[derive(Default)]
+#[derive(Default, PartialEq, Eq)]
 enum LuaVersion {
     #[default]
     Default,
@@ -39,9 +43,35 @@ fn main() {
 
         output.push_str("\nlocal files = {");
         for file in project.files {
-            let name = path_without_extension(&file).to_str().unwrap().into();
-            let content = std::fs::read_to_string(file).unwrap();
-            output.push_str(insert_module(name, content, require_method.clone(), 1).as_str());
+            let binding = path_without_extension(&file);
+            let name = binding.to_str().unwrap();
+
+            let mut content = std::fs::read_to_string(&file).unwrap();
+            let extension = file.extension().unwrap().to_str().unwrap();
+
+            if extension == "fnl" {
+                let mut fennel_binary = Command::new("fennel")
+                    .stdin(Stdio::piped())
+                    .stdout(Stdio::piped())
+                    .arg("--compile")
+                    .arg("-")
+                    .spawn()
+                    .expect("error: failed to launch fennel");
+                write!(fennel_binary.stdin.as_mut().unwrap(), "{}", content).unwrap();
+
+                content =
+                    String::from_utf8_lossy(&fennel_binary.wait_with_output().unwrap().stdout)
+                        .to_string();
+                //.stdout
+                //.as_mut()
+                //.unwrap()
+                //.read_to_string(&mut content)
+                //.unwrap();
+
+                //fennel_binary.kill().unwrap();
+            }
+
+            output.push_str(insert_module(name, &content, &require_method, 1).as_str());
         }
         output.push_str("\n}\n");
 
@@ -86,7 +116,7 @@ fn parse_build_file() -> Option<BuildFile> {
             projects
         }
         None => {
-            eprintln!("error: missing [[project]] filed in build.toml");
+            eprintln!("error: missing [[project]] field in build.toml");
             return None;
         }
     };
@@ -206,7 +236,7 @@ fn indent_block(block: String, level: usize) -> String {
     lines.join("\n")
 }
 
-fn inject_require(code: String, require: String) -> String {
+fn inject_require(code: &str, require: &str) -> String {
     format!(
         "local {require}, functions, get_require = get_require(functions), nil, nil
 
@@ -214,7 +244,7 @@ fn inject_require(code: String, require: String) -> String {
     )
 }
 
-fn insert_module(file: String, code: String, require: String, level: usize) -> String {
+fn insert_module(file: &str, code: &str, require: &str, level: usize) -> String {
     let code = indent_block(inject_require(code, require), 1);
     indent_block(
         format!(

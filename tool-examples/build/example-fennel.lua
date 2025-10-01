@@ -2,8 +2,12 @@ local functions = {}
 functions.__index = functions
 
 ---@class Functions
+---@field context Context
 
 ---@class Context
+---@field file_path string
+---@field files table<string>
+---@field modules table<string, function>	
 
 ---@param context Context
 ---@return Functions
@@ -62,19 +66,6 @@ function functions:remove_trailing_slash(directory)
 	return directory
 end
 
----@param module string
----@return string?, string?
-function functions:get_module_from_global_path(module)
-	for _, global in self.context.globals do
-		local file = string.format("%s/%s", global, module)
-
-		if self.context.files[file] then return module, file end
-		if self.context.files[file .. "/init"] then
-			return module, file .. "/init"
-		end
-	end
-end
-
 ---@param path string
 ---@return string?, string?
 function functions:get_module_from_relative_path(path)
@@ -104,8 +95,7 @@ function functions:require(module)
 			self.context.modules[file] = self.context.files[file](functions.new({
 				file_path = file,
 				files = self.context.files,
-				globals = self.context.globals,
-				modules = self.context.modules	
+				modules = self.context.modules
 			}))
 		end
 
@@ -122,11 +112,6 @@ local function get_require(functions)
 end
 
 local files = {	
-	["src/second"] = function(functions)
-		local require, functions, get_require = get_require(functions), nil, nil
-		
-		print("second script")
-	end,	
 	["src/main"] = function(functions)
 		local require, functions, get_require = get_require(functions), nil, nil
 		
@@ -147,6 +132,19 @@ local files = {
 		end
 		
 		return M
+	end,	
+	["src/second"] = function(functions)
+		local require, functions, get_require = get_require(functions), nil, nil
+		
+		print("second script")
+	end,	
+	["src/main"] = function(functions)
+		local require, functions, get_require = get_require(functions), nil, nil
+		
+		local zero = require("../vendor/zero")
+		local module = require("module")
+		module.pony()
+		return assert((type(zero) == "number"))
 	end,	
 	["vendor/zero"] = function(functions)
 		local require, functions, get_require = get_require(functions), nil, nil

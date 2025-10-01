@@ -7,3 +7,9 @@ entry_point = "src/main.lua"
 name = "second"
 files = ["src/second.lua"]
 entry_point = "src/second.lua"
+
+# fennel files automatically compile to lua!
+[[project]]
+name = "example-fennel"
+files = ["src", "vendor"]
+entry_point = "src/main.fnl"
