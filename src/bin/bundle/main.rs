@@ -1,13 +1,17 @@
 use std::path::{Path, PathBuf};
 
-use toml;
+use toml::Table;
 
 const BUILD_FILE: &str = "build.toml";
 const DEFAULT_REQUIRE_FUNCTION: &str = "require";
 
+#[derive(Default)]
 enum LuaVersion {
-    Lua,
+    #[default]
+    Default,
+    Lua51,
     Luau,
+    Fennel,
 }
 
 struct Project {
@@ -31,7 +35,7 @@ fn main() {
     let require_method = build.require_function;
 
     for project in build.projects {
-        let mut output = format!("{}", include_str!("lua.lua"));
+        let mut output = include_str!("lua.lua").to_string();
 
         output.push_str("\nlocal files = {");
         for file in project.files {
@@ -52,18 +56,18 @@ fn main() {
         );
 
         std::fs::create_dir_all(&project.output).unwrap();
-        std::fs::write(&project.output.join(project.name), output).unwrap();
+        std::fs::write(project.output.join(&project.name), output).unwrap();
     }
 }
 
 fn parse_build_file() -> Option<BuildFile> {
     if !std::fs::exists(BUILD_FILE).unwrap() {
-        println!("error: could not find `build.toml` file");
+        eprintln!("error: could not find `build.toml` file");
         return None;
     }
 
     let build = std::fs::read_to_string(BUILD_FILE).unwrap();
-    let table = build.as_str().parse::<toml::Table>().unwrap();
+    let table = build.as_str().parse::<Table>().unwrap();
 
     let projects = match table.get("project") {
         Some(value) => {
@@ -82,7 +86,7 @@ fn parse_build_file() -> Option<BuildFile> {
             projects
         }
         None => {
-            println!("error: missing [[project]] filed in build.toml");
+            eprintln!("error: missing [[project]] filed in build.toml");
             return None;
         }
     };
@@ -93,7 +97,7 @@ fn parse_build_file() -> Option<BuildFile> {
     })
 }
 
-fn parse_project(table: &toml::Table) -> Option<Project> {
+fn parse_project(table: &Table) -> Option<Project> {
     let name = format!(
         "{}.lua",
         match table.get("name") {
@@ -112,21 +116,21 @@ fn parse_project(table: &toml::Table) -> Option<Project> {
         Some(value) => {
             let entry = PathBuf::from(value.as_str().unwrap());
             if !entry.exists() {
-                println!("error: a project entry contains an invalid file in the `entry_point`");
+                eprintln!("error: a project entry contains an invalid file in the `entry_point`");
                 return None;
             }
             entry
         }
+
         None => {
-            println!("error: a project entry is missing a `entry_point` file");
+            eprintln!("error: a project entry is missing a `entry_point` file");
             return None;
         }
-    }
-    .into();
+    };
 
     let lua_version = match table.get("lua_version") {
         Some(value) => LuaVersion::from(value.as_str().unwrap()),
-        None => LuaVersion::Lua,
+        None => LuaVersion::default(),
     };
 
     let files = match table.get("files") {
@@ -136,7 +140,9 @@ fn parse_project(table: &toml::Table) -> Option<Project> {
             for value in array {
                 let entry = PathBuf::from(value.as_str().unwrap());
                 if !entry.exists() {
-                    println!("error: a project entry contains an invalid file in the `files` list");
+                    eprintln!(
+                        "error: a project entry contains an invalid file in the `files` list"
+                    );
                     return None;
                 }
 
@@ -147,7 +153,7 @@ fn parse_project(table: &toml::Table) -> Option<Project> {
         }
 
         None => {
-            println!("error: a project entry is missing a `files` list");
+            eprintln!("error: a project entry is missing a `files` list");
             return None;
         }
     };
@@ -178,8 +184,8 @@ fn files_from_path(path: &Path) -> Vec<PathBuf> {
     files
 }
 
-fn path_without_extension(path: &PathBuf) -> PathBuf {
-    let mut path = path.clone();
+fn path_without_extension(path: &Path) -> PathBuf {
+    let mut path = path.to_path_buf();
     // TODO: use file_prefix
     if let Some(stem) = path.clone().file_stem() {
         path.set_file_name(stem);
@@ -235,9 +241,10 @@ functions.new({{
 impl From<&str> for LuaVersion {
     fn from(string: &str) -> Self {
         match string {
-            "Lua" => Self::Lua,
+            "Lua51" => Self::Lua51,
             "Luau" => Self::Luau,
-            _ => Self::Lua,
+            "Fennel" => Self::Fennel,
+            _ => Self::Default,
         }
     }
 }
