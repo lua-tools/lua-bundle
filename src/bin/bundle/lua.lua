@@ -66,16 +66,27 @@ function functions:remove_trailing_slash(directory)
 	return directory
 end
 
+---@param file string
+---@param context table
+---@return string?, string?
+local function get_module_from_context(file, context)
+	if context.files[file] then return file, file end
+	if context.files[file .. "/init"] then
+		return file .. '/', file .. "/init"
+	end
+end
+
 ---@param path string
 ---@return string?, string?
 function functions:get_module_from_relative_path(path)
 	local file = self:get_file_path(self:get_caller_directory() .. path)
-	file = self:remove_trailing_slash(file)
+	return get_module_from_context((self:remove_trailing_slash(file)), self.context)
+end
 
-	if self.context.files[file] then return file, file end
-	if self.context.files[file .. "/init"] then
-		return file .. '/', file .. "/init"
-	end
+---@param path string
+---@return string?, string?
+function functions:get_module_from_global_path(path)
+	return get_module_from_context((self:remove_trailing_slash(path)), self.context)
 end
 
 ---@param module string?
