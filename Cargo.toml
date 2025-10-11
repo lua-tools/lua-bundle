@@ -5,7 +5,7 @@ description = "a lua file concatter"
 repository = "https://github.com/lua-tools/lua-bundle"
 
 license = "GPL-3.0-only"
-version = "0.1.1"
+version = "0.1.2"
 edition = "2024"
 
 [[bin]]
