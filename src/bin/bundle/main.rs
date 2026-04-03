@@ -4,12 +4,33 @@ use std::{
     process::{Command, Stdio},
 };
 
+use clap::{Parser, Subcommand, ValueEnum};
 use toml::Table;
 
 const BUILD_FILE: &str = "build.toml";
 const DEFAULT_REQUIRE_FUNCTION: &str = "require";
 
-#[derive(Default, PartialEq, Eq)]
+#[derive(Debug, Parser)]
+#[command(version, about)]
+struct CliCommand {
+    #[command(subcommand)]
+    command: Commands,
+}
+
+#[derive(Debug, Subcommand)]
+enum Commands {
+    /// Create a new lua project
+    New {
+        name: String,
+        #[arg(short, long)]
+        version: Option<LuaVersion>,
+    },
+    /// Build the current lua project
+    #[command(alias = "b")]
+    Build,
+}
+
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, ValueEnum)]
 enum LuaVersion {
     #[default]
     Default,
@@ -18,6 +39,7 @@ enum LuaVersion {
     Fennel,
 }
 
+#[derive(Default)]
 struct Project {
     name: String,
     output: PathBuf,
@@ -32,16 +54,58 @@ struct BuildFile {
 }
 
 fn main() {
-    let Some(build) = BuildFile::from_workspace() else {
-        return;
-    };
+    let cli = CliCommand::parse();
+    match &cli.command {
+        Commands::New { name, version } => {
+            Project::new(&name, version);
+        }
 
-    for project in build.projects {
-        project.build(&build.require_function);
-    }
+        Commands::Build => {
+            let Some(build) = BuildFile::from_workspace() else {
+                return;
+            };
+
+            for project in build.projects {
+                project.build(&build.require_function);
+            }
+        }
+    };
 }
 
 impl Project {
+    fn new(name: &str, version: &Option<LuaVersion>) -> Project {
+        let version = version.unwrap_or_default();
+        let extension = match version == LuaVersion::Fennel {
+            true => "fnl",
+            false => "lua",
+        };
+
+        let path = format!("./{name}");
+        std::fs::create_dir_all(format!("{path}/src")).expect("failed to create project directory");
+        std::fs::write(
+            format!("{path}/build.toml"),
+            format!(
+                "[[project]]
+name = \"{name}\"
+files = [\"src\"]
+entry_point = \"src/main.{extension}\"
+lua_version = \"{version}\"
+"
+            ),
+        )
+        .unwrap();
+
+        let entry_point = match version {
+            LuaVersion::Fennel => "(print \"Hello world\")",
+            _ => "print(\"Hello world\")",
+        };
+
+        std::fs::write(format!("{path}/src/main.{extension}"), entry_point)
+            .expect("failed to create entry-point file");
+
+        Project::default()
+    }
+
     fn build(&self, require_method: &str) {
         let mut output = include_str!("lua.lua").to_string();
 
@@ -277,5 +341,20 @@ impl From<&str> for LuaVersion {
             "Fennel" => Self::Fennel,
             _ => Self::Default,
         }
+    }
+}
+
+impl std::fmt::Display for LuaVersion {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{}",
+            match self {
+                LuaVersion::Default => "any",
+                LuaVersion::Lua51 => "lua5.1",
+                LuaVersion::Luau => "luau",
+                LuaVersion::Fennel => "fennel",
+            }
+        )
     }
 }
