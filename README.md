@@ -3,16 +3,10 @@ A lua file concatter cli tool
 
 # Usage
 ```sh
-mkdir project
+lua-bundle new project
+
 cd project
-
-echo '
-[[project]]
-name = "project"
-files = ["src"]
-entry_point = "src/main.lua"' > build.toml
-
-lua-bundle
+lua-bundle build
 ```
 
 # TO-DO
