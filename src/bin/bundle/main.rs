@@ -84,14 +84,14 @@ impl Project {
         std::fs::create_dir_all(format!("{path}/src")).expect("failed to create project directory");
         std::fs::write(
             format!("{path}/build.toml"),
-            format!(
-                "[[project]]
-name = \"{name}\"
-files = [\"src\"]
-entry_point = \"src/main.{extension}\"
-lua_version = \"{version}\"
-"
-            ),
+            (toml::toml! {
+                [[project]]
+                name = "\\${name}"
+                files = ["src"]
+                entry_point = "src/main.\\${extension}"
+                lua_version = "\\${version}"
+            })
+            .to_string(),
         )
         .unwrap();
 
@@ -157,7 +157,7 @@ impl BuildFile {
 
                 for value in array {
                     let table = value.as_table().unwrap();
-                    let Some(project) = parse_project(table) else {
+                    let Ok(project) = Project::try_from(table) else {
                         continue;
                     };
 
@@ -192,74 +192,72 @@ fn compile_fennel_to_lua(source: &str) -> String {
     String::from_utf8_lossy(&fennel.wait_with_output().unwrap().stdout).to_string()
 }
 
-fn parse_project(table: &Table) -> Option<Project> {
-    let name = format!(
-        "{}.lua",
-        match table.get("name") {
-            Some(value) => value.as_str().unwrap(),
-            None => "a",
-        }
-    );
+impl TryFrom<&Table> for Project {
+    type Error = &'static str;
 
-    let output = match table.get("output") {
-        Some(value) => value.as_str().unwrap(),
-        None => "build",
-    }
-    .into();
-
-    let entry_point = match table.get("entry_point") {
-        Some(value) => {
-            let entry = PathBuf::from(value.as_str().unwrap());
-            if !entry.exists() {
-                eprintln!("error: a project entry contains an invalid file in the `entry_point`");
-                return None;
+    fn try_from(table: &Table) -> Result<Self, Self::Error> {
+        let name = format!(
+            "{}.lua",
+            match table.get("name") {
+                Some(value) => value.as_str().unwrap(),
+                None => "a",
             }
-            entry
+        );
+
+        let output = match table.get("output") {
+            Some(value) => value.as_str().unwrap(),
+            None => "build",
         }
+        .into();
 
-        None => {
-            eprintln!("error: a project entry is missing a `entry_point` file");
-            return None;
-        }
-    };
-
-    let lua_version = match table.get("lua_version") {
-        Some(value) => LuaVersion::from(value.as_str().unwrap()),
-        None => LuaVersion::default(),
-    };
-
-    let files = match table.get("files") {
-        Some(value) => {
-            let mut files = Vec::new();
-            let array = value.as_array().unwrap();
-            for value in array {
+        let entry_point = match table.get("entry_point") {
+            Some(value) => {
                 let entry = PathBuf::from(value.as_str().unwrap());
                 if !entry.exists() {
-                    eprintln!(
-                        "error: a project entry contains an invalid file in the `files` list"
-                    );
-                    return None;
+                    return Err("a project entry contains an invalid file in the `entry_point`");
                 }
-
-                files.extend(files_from_path(&entry));
+                entry
             }
 
-            files
-        }
+            None => {
+                return Err("a project entry is missing a `entry_point` file");
+            }
+        };
 
-        None => {
-            eprintln!("error: a project entry is missing a `files` list");
-            return None;
-        }
-    };
+        let lua_version = match table.get("lua_version") {
+            Some(value) => LuaVersion::from(value.as_str().unwrap()),
+            None => LuaVersion::default(),
+        };
 
-    Some(Project {
-        name,
-        output,
-        entry_point,
-        files,
-        lua_version,
-    })
+        let files = match table.get("files") {
+            Some(value) => {
+                let mut files = Vec::new();
+                let array = value.as_array().unwrap();
+                for value in array {
+                    let entry = PathBuf::from(value.as_str().unwrap());
+                    if !entry.exists() {
+                        return Err("a project entry contains an invalid file in the `files` list");
+                    }
+
+                    files.extend(files_from_path(&entry));
+                }
+
+                files
+            }
+
+            None => {
+                return Err("a project entry is missing a `files` list");
+            }
+        };
+
+        Ok(Project {
+            name,
+            output,
+            entry_point,
+            files,
+            lua_version,
+        })
+    }
 }
 
 fn files_from_path(path: &Path) -> Vec<PathBuf> {
@@ -350,10 +348,10 @@ impl std::fmt::Display for LuaVersion {
             f,
             "{}",
             match self {
-                LuaVersion::Default => "any",
-                LuaVersion::Lua51 => "lua5.1",
-                LuaVersion::Luau => "luau",
-                LuaVersion::Fennel => "fennel",
+                LuaVersion::Lua51 => "Lua51",
+                LuaVersion::Luau => "Luau",
+                LuaVersion::Fennel => "Fennel",
+                _ => "Any",
             }
         )
     }
